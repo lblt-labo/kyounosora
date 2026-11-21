@@ -126,14 +126,14 @@ label{font-size:.85rem;display:block;margin-top:14px}
   </div>
   <input type="file" id="fCam" accept="image/*" capture="environment" hidden>
   <input type="file" id="fLib" accept="image/*" hidden>
-  <label>今日の空は？（1行）<input type="text" id="eT" maxlength="30" placeholder="例：きれいな青空だった日 / 夕焼けが切なかった日 / 雲ひとつない日"></label>
+  <label>ひとこと（任意・1行）<input type="text" id="eT" maxlength="30" placeholder="例：きれいな青空だった日 / 夕焼けが切なかった日（空欄でもOK）"></label>
   <div class="row"><button class="pri" id="eSave">記録する</button><button class="sec" data-close>キャンセル</button></div>
 </div></div>
 
 <div class="modal" id="mHelp"><div class="box">
   <h2>使い方</h2>
   <ol>
-    <li>見上げた空を撮るか選んで、「〇〇の日」を1行だけ添えて残します。</li>
+    <li>見上げた空を撮るか選んで残します。ひとこと（「〇〇の日」など）は書いても書かなくてもOKです。</li>
     <li>写真の空の色が、カラーコード（例：#7EC0EE）として自動で付きます。</li>
     <li>記録できるのは当日分だけ。記録後の修正はできません。</li>
     <li>記録はカードの「削除」でいつでも消せます（確認あり）。消すとその日は空白に戻ります。</li>
@@ -176,14 +176,14 @@ document.addEventListener('DOMContentLoaded', function () {
   /* ---- storage ---- */
   function openDB(cb) {
     try {
-      const r = indexedDB.open('sorairo_clip', 1);
+      const r = indexedDB.open('kyounosora', 1);
       r.onupgradeneeded = () => { try { r.result.createObjectStore('r'); } catch (e) {} };
       r.onsuccess = () => { idb = r.result; cb(); };
       r.onerror = () => cb();
     } catch (e) { cb(); }
   }
   function loadAll(cb) {
-    if (!idb) { recs = lsGet('sorairo_clip_records', {}); return cb(); }
+    if (!idb) { recs = lsGet('kyounosora_records', {}); return cb(); }
     try {
       const c = idb.transaction('r').objectStore('r').openCursor();
       c.onsuccess = () => { const x = c.result; if (x) { recs[x.key] = x.value; x['continue'](); } else cb(); };
@@ -192,13 +192,13 @@ document.addEventListener('DOMContentLoaded', function () {
   }
   function putRec(k, v) {
     recs[k] = v;
-    try { if (idb) idb.transaction('r', 'readwrite').objectStore('r').put(v, k); else lsSet('sorairo_clip_records', recs); }
-    catch (e) { try { lsSet('sorairo_clip_records', recs); } catch (e2) {} }
+    try { if (idb) idb.transaction('r', 'readwrite').objectStore('r').put(v, k); else lsSet('kyounosora_records', recs); }
+    catch (e) { try { lsSet('kyounosora_records', recs); } catch (e2) {} }
   }
   function delRec(k) {
     delete recs[k];
-    try { if (idb) idb.transaction('r', 'readwrite').objectStore('r')['delete'](k); else lsSet('sorairo_clip_records', recs); }
-    catch (e) { try { lsSet('sorairo_clip_records', recs); } catch (e2) {} }
+    try { if (idb) idb.transaction('r', 'readwrite').objectStore('r')['delete'](k); else lsSet('kyounosora_records', recs); }
+    catch (e) { try { lsSet('kyounosora_records', recs); } catch (e2) {} }
   }
   function askDel() {
     const k = curKey;
@@ -208,7 +208,7 @@ document.addEventListener('DOMContentLoaded', function () {
     }
   }
   function clearAll() {
-    recs = {}; lsSet('sorairo_clip_records', {});
+    recs = {}; lsSet('kyounosora_records', {});
     try { if (idb) idb.transaction('r', 'readwrite').objectStore('r').clear(); } catch (e) {}
   }
 
@@ -230,8 +230,8 @@ document.addEventListener('DOMContentLoaded', function () {
     if (k === tk) c.classList.add('today');
     if (k > tk) c.classList.add('fut');
     if (label) { const s = document.createElement('span'); s.className = 'n'; s.textContent = label; c.appendChild(s); }
-    if (showTitle && r) { const t = document.createElement('span'); t.className = 't'; if (r.hex) { const hh = document.createElement('span'); hh.className = 'h'; hh.textContent = r.hex; t.appendChild(hh); } t.appendChild(document.createTextNode(r.title)); c.appendChild(t); }
-    c.setAttribute('aria-label', k + (r ? ' ' + r.title : ''));
+    if (showTitle && r && (r.hex || r.title)) { const t = document.createElement('span'); t.className = 't'; if (r.hex) { const hh = document.createElement('span'); hh.className = 'h'; hh.textContent = r.hex; t.appendChild(hh); } if (r.title) t.appendChild(document.createTextNode(r.title)); c.appendChild(t); }
+    c.setAttribute('aria-label', k + (r ? ' ' + (r.title || r.hex || '') : ''));
     c.onclick = () => tap(k);
     return c;
   }
@@ -239,7 +239,7 @@ document.addEventListener('DOMContentLoaded', function () {
     try {
       const tk = todayKey(), r = recs[tk];
       $('tdD').textContent = '今日 ' + fmt(tk);
-      $('tdT').textContent = r ? r.title : 'まだ記録がありません';
+      $('tdT').textContent = r ? (r.title || r.hex || '記録ずみ') : 'まだ記録がありません';
       $('tdTh').style.backgroundImage = r && r.th ? 'url(' + r.th + ')' : 'none';
       $('bRec').textContent = r ? '記録ずみ' : '今日の空を残す';
       $('bRec').disabled = !!r; $('bRec').style.opacity = r ? '.5' : '1';
@@ -278,7 +278,7 @@ document.addEventListener('DOMContentLoaded', function () {
   });
   function showCard(k) {
     const r = recs[k]; if (!r) return; curKey = k;
-    $('ci').src = r.img || r.th; $('chx').textContent = r.hex || ''; $('cd').textContent = fmt(k); $('ct').textContent = r.title;
+    $('ci').src = r.img || r.th; $('chx').textContent = r.hex || ''; $('cd').textContent = fmt(k); $('ct').textContent = r.title || ''; $('ct').style.display = r.title ? '' : 'none';
     open('mCard');
   }
   function openEntry() {
@@ -338,7 +338,6 @@ document.addEventListener('DOMContentLoaded', function () {
   $('eSave').onclick = () => {
     const t = $('eT').value.trim();
     if (!pImg) return toast('空の写真を1枚選んでください');
-    if (!t) return toast('「〇〇の日」を1行入れてください');
     if (recs[todayKey()]) return close('mEntry');
     putRec(todayKey(), { title: t, img: pImg, th: pTh, hex: pHex, at: Date.now() });
     close('mEntry'); render(); toast('今日が埋まりました ✨');
@@ -360,10 +359,10 @@ document.addEventListener('DOMContentLoaded', function () {
     const r = recs[k]; if (!r) return cb(null);
     loadImg(r.img || r.th, (im) => {
       try {
-        const c = document.createElement('canvas'); c.width = 1080; c.height = 1350; const x = c.getContext('2d');
-        x.fillStyle = '#dfe9f3'; x.fillRect(0, 0, 1080, 1350);
+        const c = document.createElement('canvas'); const hasT = !!r.title, H = hasT ? 1350 : 1200; c.width = 1080; c.height = H; const x = c.getContext('2d');
+        x.fillStyle = '#dfe9f3'; x.fillRect(0, 0, 1080, H);
         x.shadowColor = 'rgba(0,0,0,.25)'; x.shadowBlur = 40; x.shadowOffsetY = 14;
-        x.fillStyle = '#fff'; x.fillRect(90, 90, 900, 1170); x.shadowColor = 'transparent';
+        x.fillStyle = '#fff'; x.fillRect(90, 90, 900, H - 180); x.shadowColor = 'transparent';
         x.fillStyle = '#ddd'; x.fillRect(130, 130, 820, 820);
         if (im) cover(x, im, 130, 130, 820, 820);
         if (r.hex) {
@@ -372,8 +371,8 @@ document.addEventListener('DOMContentLoaded', function () {
           x.fillStyle = '#fff'; x.textAlign = 'right'; x.font = 'bold 40px monospace'; x.fillText(r.hex, 930, 925); x.textAlign = 'left';
         }
         x.textAlign = 'left'; x.fillStyle = '#5b6b7c'; x.font = '36px ' + FONT; x.fillText(fmt(k), 130, 1020);
-        x.fillStyle = '#1f2a36'; x.font = 'bold 56px ' + FONT; wrap(x, r.title, 130, 1100, 820, 70);
-        x.fillStyle = '#6f8094'; x.font = '26px ' + FONT; x.textAlign = 'right'; x.fillText('わたしだけのきょうのそら', 950, 1225);
+        if (hasT) { x.fillStyle = '#1f2a36'; x.font = 'bold 56px ' + FONT; wrap(x, r.title, 130, 1100, 820, 70); }
+        x.fillStyle = '#6f8094'; x.font = '26px ' + FONT; x.textAlign = 'right'; x.fillText('わたしだけのきょうのそら', 950, H - 125);
         cb(c);
       } catch (e) { cb(null); }
     });
@@ -461,7 +460,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const on = $('sPass').checked, code = $('sCode').value.trim();
     if (on && !/^\d{4}$/.test(code)) return toast('暗証番号は4桁の数字で入力してください');
     S.cut = +sc.value; S.pass = on; S.code = on ? code : '';
-    lsSet('sorairo_clip_settings', S); close('mSet'); render(); toast('設定を保存しました');
+    lsSet('kyounosora_settings', S); close('mSet'); render(); toast('設定を保存しました');
   };
   $('sReset').onclick = () => {
     if (confirm('記録をすべて削除します。元に戻せません。よろしいですか？')) { clearAll(); render(); close('mSet'); toast('初期化しました'); }
@@ -488,19 +487,19 @@ document.addEventListener('DOMContentLoaded', function () {
 
   /* ---- install banner ---- */
   const standalone = () => { try { return window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true; } catch (e) { return false; } };
-  function showInst() { if (lsGet('sorairo_clip_inst', false) || standalone()) return; $('inst').classList.add('on'); }
+  function showInst() { if (lsGet('kyounosora_inst', false) || standalone()) return; $('inst').classList.add('on'); }
   window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); dp = e; setTimeout(showInst, 1500); });
   $('instGo').onclick = () => {
-    if (dp) { try { dp.prompt(); } catch (e) {} dp = null; lsSet('sorairo_clip_inst', true); $('inst').classList.remove('on'); }
+    if (dp) { try { dp.prompt(); } catch (e) {} dp = null; lsSet('kyounosora_inst', true); $('inst').classList.remove('on'); }
     else toast('ブラウザの共有メニューから「ホーム画面に追加」を選んでください');
   };
-  $('instX').onclick = () => { lsSet('sorairo_clip_inst', true); $('inst').classList.remove('on'); };
+  $('instX').onclick = () => { lsSet('kyounosora_inst', true); $('inst').classList.remove('on'); };
   setTimeout(() => {
     if (!dp && /iphone|ipad|ipod/i.test(navigator.userAgent)) { $('instT').textContent = '共有ボタンから「ホーム画面に追加」でアプリとして使えます'; $('instGo').style.display = 'none'; showInst(); }
   }, 2500);
 
   /* ---- boot ---- */
-  S = Object.assign(S, lsGet('sorairo_clip_settings', {}));
+  S = Object.assign(S, lsGet('kyounosora_settings', {}));
   const t0 = new Date(Date.now() - S.cut * 3600000); vy = t0.getFullYear(); vm = t0.getMonth();
   render();
   lock();
