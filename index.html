@@ -60,6 +60,9 @@ h1{font-size:1.25rem;margin:0;letter-spacing:.04em}
 .c .t .h{display:block;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.45rem;letter-spacing:.02em;opacity:.95}
 .ph{position:relative}
 .hx{position:absolute;left:0;right:0;bottom:0;padding:18px 8px 6px;text-align:right;color:#fff;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.8rem;letter-spacing:.06em;background:linear-gradient(transparent,rgba(0,0,0,.55));text-shadow:0 1px 2px rgba(0,0,0,.6)}
+.msgbar{margin:10px 0 0;padding:10px 14px;background:#fff;border:1px solid var(--line);border-radius:12px;font-size:.9rem;align-items:center;gap:8px;min-height:44px;cursor:pointer}
+input[type=checkbox]{width:22px;height:22px;vertical-align:middle;margin-right:6px}
+.note{font-size:.78rem;line-height:1.6;color:var(--sub);margin:6px 0 0}
 .act{display:flex;justify-content:center;margin:14px 0 4px}
 .modal{position:fixed;inset:0;background:rgba(20,30,45,.55);display:none;align-items:center;justify-content:center;padding:16px;z-index:50;overflow:auto}
 .modal.on{display:flex}
@@ -99,6 +102,7 @@ label{font-size:.85rem;display:block;margin-top:14px}
     <button class="ib" id="bHelp" aria-label="使い方・ヘルプ">？</button>
     <button class="ib" id="bSet" aria-label="設定">⚙</button>
   </header>
+  <div class="msgbar" id="msgBar" style="display:none" role="button" tabindex="0"><span aria-hidden="true">☁️</span><span id="msgT"></span></div>
   <div class="today-box">
     <div class="th" id="tdTh"></div>
     <div class="tx"><div class="d" id="tdD"></div><div class="ti" id="tdT"></div></div>
@@ -137,6 +141,8 @@ label{font-size:.85rem;display:block;margin-top:14px}
     <li>写真の空の色が、カラーコード（例：#7EC0EE）として自動で付きます。</li>
     <li>記録できるのは当日分だけ。記録後の修正はできません。</li>
     <li>記録はカードの「削除」でいつでも消せます（確認あり）。消すとその日は空白に戻ります。</li>
+    <li>設定で、カラーコードとひとことの表示をオン・オフできます。オフにしても記録は消えず、オンに戻すとまた表示されます。</li>
+    <li>設定で「ランダムメッセージ・通知」をオンにすると、空を見上げたくなる一言が画面に出ます。通知を許可すると、アプリを開いたままほかの画面を見ているときにもお知らせします。ブラウザやアプリを閉じている間は届きません。</li>
     <li>日付の締め切りは、初期設定で翌朝4:00です（設定で変更可）。</li>
     <li>月間カレンダーと、1年分のモザイクで空を眺められます。マスをタップするとカードが開きます。</li>
     <li>カードや月間・年間のモザイクは、「画像を保存」「SNSでシェア」から画像にできます。</li>
@@ -151,6 +157,10 @@ label{font-size:.85rem;display:block;margin-top:14px}
     <select id="sCut"></select></label>
   <label><input type="checkbox" id="sPass"> パスコードロックを使う</label>
   <label>4桁の暗証番号<input type="tel" id="sCode" inputmode="numeric" maxlength="4" placeholder="0000"></label>
+  <label><input type="checkbox" id="sHex"> カラーコードを表示する</label>
+  <label><input type="checkbox" id="sTitle"> ひとことを表示する</label>
+  <label><input type="checkbox" id="sMsg"> ランダムメッセージ・通知を使う</label>
+  <p class="note" id="sMsgNote"></p>
   <div class="row"><button class="sec danger" id="sReset">データを初期化</button></div>
   <div class="row"><button class="pri" id="sOk">保存して閉じる</button></div>
 </div></div>
@@ -164,7 +174,7 @@ document.addEventListener('DOMContentLoaded', function () {
   const $ = (i) => document.getElementById(i);
   const WD = ['日','月','火','水','木','金','土'];
   const mem = {};
-  let S = { cut: 4, pass: false, code: '' };
+  let S = { cut: 4, pass: false, code: '', msg: false, showHex: true, showTitle: true };
   let recs = {}, idb = null;
   let view = 'month', vy = 0, vm = 0, curKey = '', pImg = '', pTh = '', pHex = '';
   let locked = false, buf = '', dp = null;
@@ -225,13 +235,13 @@ document.addEventListener('DOMContentLoaded', function () {
   function mkCell(k, label, showTitle) {
     const c = document.createElement('button'); c.type = 'button'; c.className = 'c';
     const r = recs[k];
-    if (r && r.th) { c.style.backgroundImage = 'url(' + r.th + ')'; c.classList.add('has'); if (r.hex) c.style.boxShadow = 'inset 0 -4px 0 ' + r.hex; }
+    if (r && r.th) { c.style.backgroundImage = 'url(' + r.th + ')'; c.classList.add('has'); if (r.hex && S.showHex) c.style.boxShadow = 'inset 0 -4px 0 ' + r.hex; }
     const tk = todayKey();
     if (k === tk) c.classList.add('today');
     if (k > tk) c.classList.add('fut');
     if (label) { const s = document.createElement('span'); s.className = 'n'; s.textContent = label; c.appendChild(s); }
-    if (showTitle && r && (r.hex || r.title)) { const t = document.createElement('span'); t.className = 't'; if (r.hex) { const hh = document.createElement('span'); hh.className = 'h'; hh.textContent = r.hex; t.appendChild(hh); } if (r.title) t.appendChild(document.createTextNode(r.title)); c.appendChild(t); }
-    c.setAttribute('aria-label', k + (r ? ' ' + (r.title || r.hex || '') : ''));
+    if (showTitle && r && ((r.hex && S.showHex) || (r.title && S.showTitle))) { const t = document.createElement('span'); t.className = 't'; if (r.hex && S.showHex) { const hh = document.createElement('span'); hh.className = 'h'; hh.textContent = r.hex; t.appendChild(hh); } if (r.title && S.showTitle) t.appendChild(document.createTextNode(r.title)); c.appendChild(t); }
+    c.setAttribute('aria-label', k + (r ? ' ' + ((S.showTitle && r.title) || (S.showHex && r.hex) || '') : ''));
     c.onclick = () => tap(k);
     return c;
   }
@@ -239,7 +249,7 @@ document.addEventListener('DOMContentLoaded', function () {
     try {
       const tk = todayKey(), r = recs[tk];
       $('tdD').textContent = '今日 ' + fmt(tk);
-      $('tdT').textContent = r ? (r.title || r.hex || '記録ずみ') : 'まだ記録がありません';
+      $('tdT').textContent = r ? ((S.showTitle && r.title) || (S.showHex && r.hex) || '記録ずみ') : 'まだ記録がありません';
       $('tdTh').style.backgroundImage = r && r.th ? 'url(' + r.th + ')' : 'none';
       $('bRec').textContent = r ? '記録ずみ' : '今日の空を残す';
       $('bRec').disabled = !!r; $('bRec').style.opacity = r ? '.5' : '1';
@@ -278,7 +288,7 @@ document.addEventListener('DOMContentLoaded', function () {
   });
   function showCard(k) {
     const r = recs[k]; if (!r) return; curKey = k;
-    $('ci').src = r.img || r.th; $('chx').textContent = r.hex || ''; $('cd').textContent = fmt(k); $('ct').textContent = r.title || ''; $('ct').style.display = r.title ? '' : 'none';
+    $('ci').src = r.img || r.th; $('chx').textContent = (S.showHex && r.hex) || ''; $('chx').style.display = (S.showHex && r.hex) ? '' : 'none'; $('cd').textContent = fmt(k); $('ct').textContent = (S.showTitle && r.title) || ''; $('ct').style.display = (S.showTitle && r.title) ? '' : 'none';
     open('mCard');
   }
   function openEntry() {
@@ -385,13 +395,13 @@ document.addEventListener('DOMContentLoaded', function () {
     const r = recs[k]; if (!r) return cb(null);
     loadImg(r.img || r.th, (im) => {
       try {
-        const c = document.createElement('canvas'); const hasT = !!r.title, H = hasT ? 1350 : 1200; c.width = 1080; c.height = H; const x = c.getContext('2d');
+        const c = document.createElement('canvas'); const hasT = !!(r.title && S.showTitle), hasH = !!(r.hex && S.showHex), H = hasT ? 1350 : 1200; c.width = 1080; c.height = H; const x = c.getContext('2d');
         x.fillStyle = '#dfe9f3'; x.fillRect(0, 0, 1080, H);
         x.shadowColor = 'rgba(0,0,0,.25)'; x.shadowBlur = 40; x.shadowOffsetY = 14;
         x.fillStyle = '#fff'; x.fillRect(90, 90, 900, H - 180); x.shadowColor = 'transparent';
         x.fillStyle = '#ddd'; x.fillRect(130, 130, 820, 820);
         if (im) cover(x, im, 130, 130, 820, 820);
-        if (r.hex) {
+        if (hasH) {
           const g = x.createLinearGradient(0, 830, 0, 950); g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,0,0,.55)');
           x.fillStyle = g; x.fillRect(130, 830, 820, 120);
           x.fillStyle = '#fff'; x.textAlign = 'right'; x.font = 'bold 40px monospace'; x.fillText(r.hex, 930, 925); x.textAlign = 'left';
@@ -430,7 +440,7 @@ document.addEventListener('DOMContentLoaded', function () {
           const cx = left + (t.i % cols) * (cell + gap), cy = top + Math.floor(t.i / cols) * (cell + gap);
           x.fillStyle = '#d5e1ee'; x.fillRect(cx, cy, cell, cell);
           if (t.im) cover(x, t.im, cx, cy, cell, cell);
-          if (t.r && t.r.hex) { const sh = Math.max(4, cell / 10); x.fillStyle = t.r.hex; x.fillRect(cx, cy + cell - sh, cell, sh); }
+          if (t.r && t.r.hex && S.showHex) { const sh = Math.max(4, cell / 10); x.fillStyle = t.r.hex; x.fillRect(cx, cy + cell - sh, cell, sh); }
           if (view === 'month' && t.d) { x.textAlign = 'left'; x.font = '22px ' + FONT; x.fillStyle = t.im ? '#fff' : '#5b6b7c'; x.fillText(t.d, cx + 8, cy + 26); }
         });
         x.textAlign = 'center'; x.fillStyle = '#6f8094'; x.font = '26px ' + FONT; x.fillText('わたしが見上げた空', W / 2, H - 60);
@@ -481,12 +491,12 @@ document.addEventListener('DOMContentLoaded', function () {
   /* ---- settings ---- */
   const sc = $('sCut');
   for (let h = 0; h <= 12; h++) { const o = document.createElement('option'); o.value = h; o.textContent = h === 0 ? '翌朝 0:00（日付が変わる時）' : '翌朝 ' + h + ':00'; sc.appendChild(o); }
-  $('bSet').onclick = () => { sc.value = S.cut; $('sPass').checked = S.pass; $('sCode').value = S.code; open('mSet'); };
+  $('bSet').onclick = () => { $('sHex').checked = !!S.showHex; $('sTitle').checked = !!S.showTitle; $('sMsg').checked = !!S.msg; upNote(); sc.value = S.cut; $('sPass').checked = S.pass; $('sCode').value = S.code; open('mSet'); };
   $('sOk').onclick = () => {
     const on = $('sPass').checked, code = $('sCode').value.trim();
     if (on && !/^\d{4}$/.test(code)) return toast('暗証番号は4桁の数字で入力してください');
-    S.cut = +sc.value; S.pass = on; S.code = on ? code : '';
-    lsSet('kyounosora_settings', S); close('mSet'); render(); toast('設定を保存しました');
+    S.cut = +sc.value; S.msg = $('sMsg').checked; S.showHex = $('sHex').checked; S.showTitle = $('sTitle').checked; S.pass = on; S.code = on ? code : '';
+    lsSet('kyounosora_settings', S); close('mSet'); render(); showMsg(); toast('設定を保存しました');
   };
   $('sReset').onclick = () => {
     if (confirm('記録をすべて削除します。元に戻せません。よろしいですか？')) { clearAll(); render(); close('mSet'); toast('初期化しました'); }
@@ -509,7 +519,7 @@ document.addEventListener('DOMContentLoaded', function () {
     };
     pad$.appendChild(b);
   });
-  document.addEventListener('visibilitychange', () => { if (document.hidden) { if (S.pass) lock(); } });
+  document.addEventListener('visibilitychange', () => { if (document.hidden) { if (S.pass) lock(); } else showMsg(); });
 
   /* ---- install banner ---- */
   const standalone = () => { try { return window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true; } catch (e) { return false; } };
@@ -524,10 +534,50 @@ document.addEventListener('DOMContentLoaded', function () {
     if (!dp && /iphone|ipad|ipod/i.test(navigator.userAgent)) { $('instT').textContent = '共有ボタンから「ホーム画面に追加」でアプリとして使えます'; $('instGo').style.display = 'none'; showInst(); }
   }, 2500);
 
+  /* ---- ランダムメッセージ・通知 ---- */
+  const MSGS = ['きょうのそらをみあげた？', 'いま、どんなそら？', 'ちょっとそらをみてみようか', 'きょうはどんなそらいろ？'];
+  const rndMsg = () => MSGS[Math.floor(Math.random() * MSGS.length)];
+  function notifState() { try { return 'Notification' in window ? Notification.permission : 'none'; } catch (e) { return 'none'; } }
+  function showMsg() {
+    try {
+      const b = $('msgBar'); if (!b) return;
+      if (!S.msg) { b.style.display = 'none'; return; }
+      $('msgT').textContent = rndMsg(); b.style.display = 'flex';
+    } catch (e) {}
+  }
+  function upNote() {
+    const s = notifState(), n = $('sMsgNote'); if (!n) return;
+    const a = s === 'granted' ? '通知：許可ずみです。' : s === 'denied' ? '通知：ブロックされています。ブラウザの設定で許可すると届きます。いまは画面内のメッセージだけ表示します。' : s === 'none' ? 'この環境は通知に対応していません。画面内のメッセージだけ表示します。' : '通知：オンにすると、許可をおたずねします。';
+    n.textContent = a + ' ※ブラウザやアプリを閉じている間は通知が届きません（開いたときに画面内でお知らせします）。';
+  }
+  function sendNotif() {
+    try {
+      if (!S.msg || !document.hidden || notifState() !== 'granted' || recs[todayKey()]) return;
+      if (Date.now() - lsGet('kyounosora_lastnotif', 0) < 3 * 3600000) return;
+      lsSet('kyounosora_lastnotif', Date.now());
+      const m = rndMsg(), o = { body: 'わたしだけのきょうのそら', icon: './icon-192.png', tag: 'kyounosora' };
+      const fb = () => { try { new Notification(m, o); } catch (e) {} };
+      if (navigator.serviceWorker && navigator.serviceWorker.getRegistration) {
+        navigator.serviceWorker.getRegistration().then((r) => { if (r && r.showNotification) r.showNotification(m, o); else fb(); }).catch(fb);
+      } else fb();
+    } catch (e) {}
+  }
+  $('sMsg').onchange = () => {
+    try {
+      if ($('sMsg').checked && 'Notification' in window && Notification.permission === 'default') {
+        const r = Notification.requestPermission(); if (r && r.then) r.then(upNote, upNote);
+      }
+    } catch (e) {}
+    upNote();
+  };
+  $('msgBar').onclick = showMsg;
+  setInterval(sendNotif, 30 * 60 * 1000);
+
   /* ---- boot ---- */
   S = Object.assign(S, lsGet('kyounosora_settings', {}));
   const t0 = new Date(Date.now() - S.cut * 3600000); vy = t0.getFullYear(); vm = t0.getMonth();
   render();
+  showMsg();
   lock();
   openDB(() => loadAll(() => { render(); }));
   try { if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(() => {}); } catch (e) {}
